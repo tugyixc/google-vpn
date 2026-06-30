@@ -125,7 +125,7 @@ fun WarpDashboard(viewModel: WarpViewModel) {
     val vpnLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (VpnService.prepare(context) == null) {
+        if (result.resultCode == android.app.Activity.RESULT_OK || VpnService.prepare(context) == null) {
             val config = latestConfig
             val endpoint = config?.endpoint ?: "162.159.192.1:500"
             val ip = config?.ipv4Address ?: "172.16.0.2"
@@ -135,7 +135,11 @@ fun WarpDashboard(viewModel: WarpViewModel) {
                 putExtra(PhoenixVpnService.EXTRA_ENDPOINT, endpoint)
                 putExtra(PhoenixVpnService.EXTRA_IP, ip)
             }
-            context.startService(intent)
+            try {
+                androidx.core.content.ContextCompat.startForegroundService(context, intent)
+            } catch (ex: Exception) {
+                context.startService(intent)
+            }
             viewModel.connect()
         } else {
             Toast.makeText(context, "VPN Permission denied!", Toast.LENGTH_SHORT).show()
@@ -156,7 +160,11 @@ fun WarpDashboard(viewModel: WarpViewModel) {
                 putExtra(PhoenixVpnService.EXTRA_ENDPOINT, endpoint)
                 putExtra(PhoenixVpnService.EXTRA_IP, ip)
             }
-            context.startService(startIntent)
+            try {
+                androidx.core.content.ContextCompat.startForegroundService(context, startIntent)
+            } catch (ex: Exception) {
+                context.startService(startIntent)
+            }
             viewModel.connect()
         }
     }
@@ -165,7 +173,9 @@ fun WarpDashboard(viewModel: WarpViewModel) {
         val stopIntent = Intent(context, PhoenixVpnService::class.java).apply {
             action = PhoenixVpnService.ACTION_DISCONNECT
         }
-        context.startService(stopIntent)
+        try {
+            context.startService(stopIntent)
+        } catch (ex: Exception) {}
         viewModel.disconnect()
     }
 

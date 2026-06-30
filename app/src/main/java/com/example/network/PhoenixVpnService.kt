@@ -76,6 +76,7 @@ class PhoenixVpnService : VpnService() {
 
         // Clean the IP address by removing any CIDR block suffix (e.g., /32) to prevent IllegalArgumentException in addAddress
         val cleanIp = ip.substringBefore("/").trim()
+        val isIpv6 = cleanIp.contains(":")
         
         try {
             // Show active foreground service notification so Android keeps service alive and displays status
@@ -96,13 +97,32 @@ class PhoenixVpnService : VpnService() {
             val builder = Builder()
                 .setSession("Phoenix VPN")
                 .setMtu(1280)
-                .addAddress(cleanIp, 32)
-                .addRoute("0.0.0.0", 0)
-                .addDnsServer("1.1.1.1")
-                .addDnsServer("8.8.8.8")
                 
-            // Establish the interface. This triggers the system VPN icon.
-            vpnInterface = builder.establish()
+            if (isIpv6) {
+                builder.addAddress(cleanIp, 128)
+                builder.addRoute("::", 0)
+            } else {
+                val ipToUse = if (cleanIp.isEmpty()) "172.16.0.2" else cleanIp
+                builder.addAddress(ipToUse, 32)
+                builder.addRoute("0.0.0.0", 0)
+            }
+            builder.addDnsServer("1.1.1.1")
+            builder.addDnsServer("8.8.8.8")
+                
+            // Establish the interface with fallback handling. This triggers the system VPN icon.
+            try {
+                vpnInterface = builder.establish()
+            } catch (e: Exception) {
+                Log.e(TAG, "First establish attempt failed, trying robust fallback...", e)
+                val fallbackBuilder = Builder()
+                    .setSession("Phoenix VPN Fallback")
+                    .setMtu(1280)
+                    .addAddress("10.0.0.2", 32)
+                    .addRoute("0.0.0.0", 0)
+                    .addDnsServer("1.1.1.1")
+                vpnInterface = fallbackBuilder.establish()
+            }
+            
             Log.d(TAG, "VPN Interface established: $vpnInterface")
             
             // Start a light loop to read and discard packets to avoid buffer overflow
