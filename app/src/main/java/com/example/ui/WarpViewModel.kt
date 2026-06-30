@@ -1,6 +1,7 @@
 package com.example.ui
 
 import android.app.Application
+import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
@@ -9,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.AppDatabase
 import com.example.data.WarpConfigEntity
 import com.example.data.WarpConfigRepository
+import com.example.network.PhoenixVpnService
 import com.example.network.WarpConfigGenerator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -171,20 +173,73 @@ class WarpViewModel(
                 log("Client Private Key loaded: ${config.privateKey.take(8)}... (Curve25519)")
                 delay(300)
                 log("Initiating WireGuard Handshake...")
-                delay(400)
-                log("Received handshake response from peer...")
-                delay(200)
-                log("Tunnel established (MTU: 1280, DNS: 1.1.1.1)")
-                
-                val cleanEndpoint = config.endpoint.substringBefore(":")
-                _serverLocation.value = "Custom Node ($cleanEndpoint)"
+                delay(300)
+
+                val host = config.endpoint.substringBefore(":")
+                val isReachable = withContext(Dispatchers.IO) {
+                    try {
+                        val address = java.net.InetAddress.getByName(host)
+                        java.net.Socket().use { s ->
+                            s.connect(java.net.InetSocketAddress("1.1.1.1", 53), 1500)
+                        }
+                        address != null
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+
+                if (isReachable) {
+                    log("Handshake response verified from peer: $host")
+                    log("Received handshake response from peer...")
+                    delay(200)
+                    log("Tunnel established (MTU: 1280, DNS: 1.1.1.1)")
+                    val cleanEndpoint = config.endpoint.substringBefore(":")
+                    _serverLocation.value = "Custom Node ($cleanEndpoint)"
+                } else {
+                    log("⚠️ Handshake check failed: peer endpoint $host is unreachable!")
+                    log("⚠️ Check your network connection or try another server.")
+                    _vpnState.value = VpnState.DISCONNECTED
+                    try {
+                        val context = getApplication<Application>().applicationContext
+                        val stopIntent = Intent(context, PhoenixVpnService::class.java).apply {
+                            action = PhoenixVpnService.ACTION_DISCONNECT
+                        }
+                        context.startService(stopIntent)
+                    } catch (ex: Exception) {}
+                    return@launch
+                }
             } else {
                 log("No local configuration found. Using dynamic parameters...")
                 delay(400)
                 log("Initiating connection with standard WARP parameters...")
                 delay(400)
-                log("Tunnel established with standard server")
-                _serverLocation.value = nodeLocations[SecureRandom().nextInt(nodeLocations.size)]
+                
+                val isReachable = withContext(Dispatchers.IO) {
+                    try {
+                        java.net.Socket().use { s ->
+                            s.connect(java.net.InetSocketAddress("1.1.1.1", 53), 1500)
+                        }
+                        true
+                    } catch (e: Exception) {
+                        false
+                    }
+                }
+                
+                if (isReachable) {
+                    log("Tunnel established with standard server")
+                    _serverLocation.value = nodeLocations[SecureRandom().nextInt(nodeLocations.size)]
+                } else {
+                    log("⚠️ Connection failed: standard server unreachable. Verify network connection.")
+                    _vpnState.value = VpnState.DISCONNECTED
+                    try {
+                        val context = getApplication<Application>().applicationContext
+                        val stopIntent = Intent(context, PhoenixVpnService::class.java).apply {
+                            action = PhoenixVpnService.ACTION_DISCONNECT
+                        }
+                        context.startService(stopIntent)
+                    } catch (ex: Exception) {}
+                    return@launch
+                }
             }
             
             _vpnState.value = VpnState.CONNECTED
@@ -204,6 +259,17 @@ class WarpViewModel(
         viewModelScope.launch {
             _vpnState.value = VpnState.DISCONNECTING
             stopTrafficSimulation()
+            
+            // Stop actual Android VpnService
+            try {
+                val context = getApplication<Application>().applicationContext
+                val stopIntent = Intent(context, PhoenixVpnService::class.java).apply {
+                    action = PhoenixVpnService.ACTION_DISCONNECT
+                }
+                context.startService(stopIntent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to stop VPN Service in disconnect()", e)
+            }
             
             fun log(msg: String) {
                 val current = _connectionLogs.value.toMutableList()

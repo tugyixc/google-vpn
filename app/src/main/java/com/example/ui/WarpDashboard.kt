@@ -3,7 +3,12 @@ package com.example.ui
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.net.VpnService
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.example.network.PhoenixVpnService
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
@@ -116,6 +121,59 @@ fun WarpDashboard(viewModel: WarpViewModel) {
     val serverLocation by viewModel.serverLocation.collectAsState()
     val latestConfig by viewModel.latestConfig.collectAsState()
     val connLogs by viewModel.connectionLogs.collectAsState()
+
+    val vpnLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK) {
+            val config = latestConfig
+            val endpoint = config?.endpoint ?: "162.159.192.1:500"
+            val ip = config?.ipv4Address ?: "172.16.0.2"
+            
+            val intent = Intent(context, PhoenixVpnService::class.java).apply {
+                action = PhoenixVpnService.ACTION_CONNECT
+                putExtra(PhoenixVpnService.EXTRA_ENDPOINT, endpoint)
+                putExtra(PhoenixVpnService.EXTRA_IP, ip)
+            }
+            context.startService(intent)
+            viewModel.connect()
+        } else {
+            Toast.makeText(context, "VPN Permission denied!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val attemptConnect = {
+        val intent = VpnService.prepare(context)
+        if (intent != null) {
+            vpnLauncher.launch(intent)
+        } else {
+            val config = latestConfig
+            val endpoint = config?.endpoint ?: "162.159.192.1:500"
+            val ip = config?.ipv4Address ?: "172.16.0.2"
+            
+            val startIntent = Intent(context, PhoenixVpnService::class.java).apply {
+                action = PhoenixVpnService.ACTION_CONNECT
+                putExtra(PhoenixVpnService.EXTRA_ENDPOINT, endpoint)
+                putExtra(PhoenixVpnService.EXTRA_IP, ip)
+            }
+            context.startService(startIntent)
+            viewModel.connect()
+        }
+    }
+
+    val attemptDisconnect = {
+        val stopIntent = Intent(context, PhoenixVpnService::class.java).apply {
+            action = PhoenixVpnService.ACTION_DISCONNECT
+        }
+        context.startService(stopIntent)
+        viewModel.disconnect()
+    }
+
+    LaunchedEffect(Unit) {
+        if (PhoenixVpnService.isRunning && vpnState == VpnState.DISCONNECTED) {
+            viewModel.connect()
+        }
+    }
 
     // Smooth color animation based on VPN state
     val stateColor by animateColorAsState(
@@ -398,9 +456,9 @@ fun WarpDashboard(viewModel: WarpViewModel) {
                             vpnState = vpnState,
                             onToggle = {
                                 if (vpnState == VpnState.DISCONNECTED) {
-                                    viewModel.connect()
+                                    attemptConnect()
                                 } else if (vpnState == VpnState.CONNECTED) {
-                                    viewModel.disconnect()
+                                    attemptDisconnect()
                                 }
                             }
                         )
@@ -436,7 +494,7 @@ fun WarpDashboard(viewModel: WarpViewModel) {
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Button(
-                                onClick = { viewModel.connect() },
+                                onClick = { attemptConnect() },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (vpnState == VpnState.DISCONNECTED) NeonGreenDim else Color(0x0F00FF88)
                                 ),
@@ -469,7 +527,7 @@ fun WarpDashboard(viewModel: WarpViewModel) {
                             }
 
                             Button(
-                                onClick = { viewModel.disconnect() },
+                                onClick = { attemptDisconnect() },
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = if (vpnState == VpnState.CONNECTED) Color(0x33FF3333) else Color(0x0FFF3333)
                                 ),
