@@ -1,0 +1,6 @@
+{
+  "name": "ဖီးနစ် VPN",
+  "description": "Generate secure Cloudflare WARP WireGuard configurations and connect to the network.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
