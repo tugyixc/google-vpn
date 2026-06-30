@@ -27,7 +27,7 @@ android {
     create("release") {
       val keystorePath = System.getenv("KEYSTORE_PATH")
       val storePasswordEnv = System.getenv("STORE_PASSWORD")
-      if (keystorePath != null && storePasswordEnv != null) {
+      if (!keystorePath.isNullOrBlank() && !storePasswordEnv.isNullOrBlank()) {
         storeFile = file(keystorePath)
         storePassword = storePasswordEnv
         keyAlias = "upload"
