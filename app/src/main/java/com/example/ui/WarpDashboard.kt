@@ -125,7 +125,7 @@ fun WarpDashboard(viewModel: WarpViewModel) {
     val vpnLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK) {
+        if (VpnService.prepare(context) == null) {
             val config = latestConfig
             val endpoint = config?.endpoint ?: "162.159.192.1:500"
             val ip = config?.ipv4Address ?: "172.16.0.2"

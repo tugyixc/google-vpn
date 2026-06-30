@@ -29,6 +29,15 @@ class MainActivity : ComponentActivity() {
         val viewModel = androidx.lifecycle.ViewModelProvider(this, factory)[WarpViewModel::class.java]
         
         enableEdgeToEdge()
+        
+        // Request notification permission at startup on Android 13+ (API 33+)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            val permission = android.Manifest.permission.POST_NOTIFICATIONS
+            if (checkSelfPermission(permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(permission), 101)
+            }
+        }
+
         setContent {
             MyApplicationTheme(darkTheme = true) { // Force Dark Mode for ultra-premium Cyberpunk feel
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
